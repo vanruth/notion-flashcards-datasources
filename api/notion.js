@@ -1,4 +1,4 @@
-// api/notion.js - Updated for Notion API v2025-09-03 (multi-source support)
+// api/notion.js - Supports single/multi-source with optional sourceId
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -15,18 +15,18 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { token, databaseId } = req.body;
+  const { token, databaseId, sourceId } = req.body; // New: sourceId optional
   if (!token || !databaseId) {
     return res.status(400).json({ error: 'Missing token or databaseId' });
   }
 
   try {
     // Step 1: Fetch the database to get data sources
-    let databaseResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
+    const databaseResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Notion-Version': '2025-09-03', // Updated for multi-source
+        'Notion-Version': '2025-09-03',
         'Content-Type': 'application/json',
       },
     });
@@ -39,34 +39,84 @@ export default async function handler(req, res) {
     }
 
     const database = await databaseResponse.json();
-    const dataSources = database.data_sources || [{ id: databaseId }]; // Fallback for single-source
+    const dataSources = database.data_sources || [];
 
-    // Step 2: Query each data source for pages
-    const allResults = [];
-    for (const source of dataSources) {
-      const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${source.id}/query`, {
+    let queryResults = [];
+    let responseSources = [];
+
+    if (sourceId) {
+      // Single source requested: Query only that one
+      if (!dataSources.some(ds => ds.id === sourceId)) {
+        return res.status(404).json({ error: 'Specified data source not found in database' });
+      }
+
+      const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${sourceId}/query`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Notion-Version': '2025-09-03',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({}) // No sort needed for flashcards
+        body: JSON.stringify({}) // No sort needed
       });
 
       if (!queryResponse.ok) {
-        console.warn(`Failed to query source ${source.id}`);
-        continue;
+        const errorData = await queryResponse.json();
+        return res.status(queryResponse.status).json({ 
+          error: errorData.message || 'Failed to query data source' 
+        });
       }
 
       const queryData = await queryResponse.json();
-      allResults.push(...(queryData.results || []));
+      queryResults = queryData.results || [];
+      responseSources = [{ id: sourceId, results: queryResults }]; // Wrap for consistency
+    } else if (dataSources.length > 0) {
+      // Multi-source: Query all
+      for (const source of dataSources) {
+        const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${source.id}/query`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Notion-Version': '2025-09-03',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({})
+        });
+
+        if (queryResponse.ok) {
+          const queryData = await queryResponse.json();
+          responseSources.push({ id: source.id, results: queryData.results || [] });
+          queryResults.push(...queryData.results);
+        } else {
+          console.warn(`Failed to query source ${source.id}`);
+        }
+      }
+    } else {
+      // Legacy single-source fallback
+      const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Notion-Version': '2025-09-03', // Still works for legacy
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+      });
+
+      if (!queryResponse.ok) {
+        const errorData = await queryResponse.json();
+        return res.status(queryResponse.status).json({ error: errorData.message || 'Failed to query database' });
+      }
+
+      const queryData = await queryResponse.json();
+      queryResults = queryData.results || [];
+      responseSources = []; // No multi-source
     }
 
-    // Step 3: Combine and return (include data_sources count for UI)
+    // Return combined results
     return res.status(200).json({ 
-      results: allResults, 
-      data_sources: dataSources 
+      results: queryResults, 
+      data_sources: responseSources 
     });
 
   } catch (error) {
