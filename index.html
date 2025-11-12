@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Language Flashcards - Multi-Source</title>
+  <title>Language Flashcards - Single/Multi-Source</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,6 +30,7 @@
       const [error, setError] = useState('');
       const [notionToken, setNotionToken] = useState('');
       const [databaseId, setDatabaseId] = useState('');
+      const [sourceId, setSourceId] = useState(''); // New: Optional source ID
       const [isConfigured, setIsConfigured] = useState(false);
 
       // Load from URL params on mount
@@ -37,21 +38,23 @@
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
         const dbId = params.get('database');
+        const srcId = params.get('source'); // New: Optional source param
         if (token && dbId) {
           setNotionToken(token);
           setDatabaseId(dbId);
-          fetchCards(token, dbId);
+          setSourceId(srcId || ''); // Set if provided
+          fetchCards(token, dbId, srcId || null);
         }
       }, []);
 
-      const fetchCards = async (token, dbId) => {
+      const fetchCards = async (token, dbId, specificSourceId = null) => {
         setLoading(true);
         setError('');
         try {
           const res = await fetch('/api/notion', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token, databaseId: dbId })
+            body: JSON.stringify({ token, databaseId: dbId, sourceId: specificSourceId }) // Pass sourceId to API
           });
 
           if (!res.ok) {
@@ -61,13 +64,26 @@
 
           const data = await res.json();
           
-          // Flatten all results from multiple sources
-          const allResults = data.results || []; // For single-source (legacy)
-          const multiSourceResults = data.data_sources ? 
-            data.data_sources.flatMap(source => source.results || []) : 
-            allResults;
+          // Handle response (single or multi-source)
+          let allResults;
+          if (data.data_sources && data.data_sources.length > 0) {
+            // Multi-source response
+            if (specificSourceId) {
+              // Single source requested: Use the first (and only) in response
+              allResults = data.data_sources[0]?.results || [];
+              setSourcesCount(1);
+            } else {
+              // All sources
+              allResults = data.data_sources.flatMap(source => source.results || []);
+              setSourcesCount(data.data_sources.length);
+            }
+          } else {
+            // Legacy single-source
+            allResults = data.results || [];
+            setSourcesCount(1);
+          }
 
-          const formatted = multiSourceResults
+          const formatted = allResults
             .filter(page => 
               page.properties.Word?.title?.[0]?.plain_text &&
               page.properties.Translation?.rich_text?.[0]?.plain_text
@@ -76,7 +92,7 @@
               id: page.id,
               front: page.properties.Word.title[0].plain_text,
               back: page.properties.Translation.rich_text[0].plain_text,
-              source: page.data_source_id || 'default' // Track source for debugging
+              source: page.data_source_id || 'default'
             }));
 
           // Dedupe by ID
@@ -85,9 +101,8 @@
           );
 
           setCards(uniqueCards);
-          setSourcesCount(data.data_sources ? data.data_sources.length : 1);
           setIsConfigured(true);
-          if (uniqueCards.length === 0) setError('No valid flashcards found. Check property names across sources.');
+          if (uniqueCards.length === 0) setError('No valid flashcards found. Check property names in the source.');
         } catch (err) {
           setError(err.message);
         } finally {
@@ -96,7 +111,7 @@
       };
 
       const handleConnect = () => {
-        if (notionToken && databaseId) fetchCards(notionToken, databaseId);
+        if (notionToken && databaseId) fetchCards(notionToken, databaseId, sourceId || null);
       };
 
       const nextCard = () => {
@@ -123,7 +138,7 @@
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h18M9 3v2m6-2v2M9 19v2m6-2v2M5 9h14M5 15h14M5 11h14M5 17h14" />
                   </svg>
                 </div>
-                <h1 className="text-2xl font-bold text-gray-800">Language Flashcards (Multi-Source)</h1>
+                <h1 className="text-2xl font-bold text-gray-800">Language Flashcards</h1>
               </div>
 
               <div className="space-y-5">
@@ -148,8 +163,23 @@
                     placeholder="2a712bc9f51280ff8d61f0c569a3c0df"
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
                   />
-                  <p className="mt-1 text-xs text-gray-500">From your Notion DB URL (works with multi-source DBs)</p>
+                  <p className="mt-1 text-xs text-gray-500">From your Notion DB URL</p>
                 </div>
+
+                {/* New: Optional Source ID Input */}
+                {databaseId && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Data Source ID (Optional)</label>
+                    <input
+                      type="text"
+                      value={sourceId}
+                      onChange={(e) => setSourceId(e.target.value)}
+                      placeholder="source_xyz789... (leave blank for all sources)"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">For multi-source DBs: Use one specific source. Find in DB settings > Data sources.</p>
+                  </div>
+                )}
 
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
                   <h3 className="font-semibold text-indigo-900 mb-2">Required Properties (Per Source):</h3>
@@ -157,13 +187,13 @@
                     <li>• <strong>Word</strong> → Title type</li>
                     <li>• <strong>Translation</strong> → Rich Text type</li>
                   </ul>
-                  <p className="text-xs mt-2">Supports multiple data sources—cards merge from all!</p>
+                  <p className="text-xs mt-2">Supports single/multi-source DBs + specific source param!</p>
                 </div>
 
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-xs">
                   <p><strong>Pro Tip:</strong> Use URL params:</p>
                   <code className="block bg-yellow-100 p-2 rounded mt-1 font-mono text-xs">
-                    ?token=xxx&database=yyy
+                    ?token=xxx&database=yyy [&source=source_zzz]
                   </code>
                 </div>
 
@@ -199,7 +229,7 @@
                 </svg>
               </div>
               <h3 className="text-xl font-semibold text-gray-700 mb-2">No Flashcards</h3>
-              <p className="text-gray-500">Add rows with "Word" and "Translation" in your Notion database sources.</p>
+              <p className="text-gray-500">Add rows with "Word" and "Translation" in your Notion database source.</p>
             </div>
           </div>
         );
