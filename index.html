@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Flashcards</title>
+  <title>Language Flashcards</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -16,110 +16,119 @@
 </head>
 <body class="bg-gradient-to-br from-indigo-50 to-purple-50 min-h-screen">
   <div id="root"></div>
-
   <script type="text/babel">
     const { useState, useEffect } = React;
-
-    function App() {
+    function FlashcardApp() {
       const [cards, setCards] = useState([]);
+      const [sourcesCount, setSourcesCount] = useState(0);
       const [idx, setIdx] = useState(0);
       const [flipped, setFlipped] = useState(false);
       const [loading, setLoading] = useState(false);
       const [err, setErr] = useState('');
       const [token, setToken] = useState('');
       const [dbId, setDbId] = useState('');
-      const [ready, setReady] = useState(false);
+      const [srcId, setSrcId] = useState('');
+      const [configured, setConfigured] = useState(false);
 
-      // Load from URL params
+      // URL params
       useEffect(() => {
         const p = new URLSearchParams(location.search);
-        const t = p.get('token'), d = p.get('database');
+        const t = p.get('token'), d = p.get('database'), s = p.get('source');
         if (t && d) {
-          setToken(t); setDbId(d);
-          load(t, d);
-        } else {
-          setReady(true);
+          setToken(t); setDbId(d); setSrcId(s||'');
+          fetchCards(t, d, s||null);
         }
       }, []);
 
-      const load = async (tk, db) => {
+      const fetchCards = async (tk, db, specificSrc = null) => {
         setLoading(true); setErr('');
         try {
           const r = await fetch('/api/notion', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: tk, databaseId: db })
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({token:tk, databaseId:db, sourceId:specificSrc})
           });
           const data = await r.json();
-          if (!r.ok) throw new Error(data.error || 'Failed');
+          if (!r.ok) throw new Error(data.error||'load failed');
 
-          const items = (data.results || [])
-            // Title property is usually called "Name" – change to "Word" if you renamed it
-            .filter(p => p.properties?.Name?.title?.[0]?.plain_text)
-            .map(p => ({
+          // Original parsing: handle data_sources or fallback to results
+          let all = [];
+          if (data.data_sources?.length) {
+            if (specificSrc) {
+              all = data.data_sources[0].results||[];
+              setSourcesCount(1);
+            } else {
+              all = data.data_sources.flatMap(s=>s.results||[]);
+              setSourcesCount(data.data_sources.length);
+            }
+          } else {
+            all = data.results||[];
+            setSourcesCount(1);
+          }
+
+          // Original mapping (updated for Text type if needed; use rich_text if Rich Text)
+          const fmt = all
+            .filter(p=>p.properties.Word?.title?.[0]?.plain_text)
+            .map(p=>({
               id: p.id,
-              front: p.properties.Name.title[0].plain_text,
-              // Translation is a **Text** property, not Rich Text
-              back: p.properties?.Text?.text?.[0]?.plain_text || '',
+              front: p.properties.Word.title[0].plain_text,
+              back: p.properties.Translation?.rich_text?.[0]?.plain_text || p.properties.Translation?.text?.[0]?.plain_text || '',  // Handles both Rich Text & Text
+              pron: p.properties.Pronunciation?.rich_text?.[0]?.plain_text || p.properties.Pronunciation?.text?.[0]?.plain_text || '',
             }));
-
-          const uniq = items.filter((c, i, a) => a.findIndex(x => x.id === c.id) === i);
+          const uniq = fmt.filter((c,i,a)=>a.findIndex(x=>x.id===c.id)===i);
           setCards(uniq);
-          setReady(true);
-          if (!uniq.length) setErr('No cards – check property names: Title → "Name", Text → "Text"');
-        } catch (e) {
-          setErr(e.message);
-        } finally {
-          setLoading(false);
-        }
+          setConfigured(true);
+          if (!uniq.length) setErr('No cards – check property names');
+        } catch (e) { setErr(e.message); }
+        finally { setLoading(false); }
       };
 
-      const next = () => { setFlipped(false); setTimeout(() => setIdx((i + 1) % cards.length), 300); };
-      const prev = () => { setFlipped(false); setTimeout(() => setIdx((i - 1 + cards.length) % cards.length), 300); };
+      const next = () => { setFlipped(false); setTimeout(()=>setIdx(i=>(i+1)%cards.length),300); };
+      const prev = () => { setFlipped(false); setTimeout(()=>setIdx(i=>(i-1+cards.length)%cards.length),300); };
 
-      // ---------- Config UI ----------
-      if (!ready) {
-        return (
-          <div className="min-h-screen flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow p-6 w-full max-w-md space-y-4">
-              <h1 className="text-2xl font-bold text-center">Flashcards</h1>
-              <input type="password" placeholder="Notion Token" value={token} onChange={e=>setToken(e.target.value)} className="w-full p-2 border rounded"/>
-              <input type="text" placeholder="Database ID" value={dbId} onChange={e=>setDbId(e.target.value)} className="w-full p-2 border rounded"/>
-              <button onClick={()=>load(token,dbId)} disabled={loading||!token||!dbId}
-                      className="w-full bg-indigo-600 text-white py-2 rounded disabled:opacity-50">
-                {loading?'Loading…':'Load'}
-              </button>
-              {err && <p className="text-red-600 text-sm">{err}</p>}
-            </div>
+      // Config UI
+      if (!configured) return (
+        <div className="min-h-screen flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow p-6 w-full max-w-md space-y-4">
+            <h1 className="text-2xl font-bold text-center">Flashcards</h1>
+            <input type="password" placeholder="Notion token" value={token} onChange={e=>setToken(e.target.value)} className="w-full p-2 border rounded"/>
+            <input type="text" placeholder="Database ID" value={dbId} onChange={e=>setDbId(e.target.value)} className="w-full p-2 border rounded"/>
+            <input type="text" placeholder="Source ID (optional)" value={srcId} onChange={e=>setSrcId(e.target.value)} className="w-full p-2 border rounded"/>
+            <button onClick={()=>fetchCards(token,dbId,srcId||null)} disabled={loading||!token||!dbId}
+                    className="w-full bg-indigo-600 text-white py-2 rounded disabled:opacity-50">
+              {loading?'Loading…':'Load'}
+            </button>
+            {err && <p className="text-red-600">{err}</p>}
           </div>
-        );
-      }
+        </div>
+      );
 
       if (!cards.length) return <div className="min-h-screen flex items-center justify-center"><p>No cards.</p></div>;
 
-      const card = cards[idx];
-
+      const c = cards[idx];
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-lg">
             <div className="flex justify-between mb-4 text-sm">
-              <span>{idx+1}/{cards.length}</span>
+              <span>Card {idx+1}/{cards.length} ({sourcesCount} source{sourcesCount>1?'s':''})</span>
               <button onClick={()=>{setCards([...cards].sort(()=>Math.random()-0.5));setIdx(0);}} className="underline">Shuffle</button>
             </div>
-
+            {/* CARD */}
             <div className="relative h-80 cursor-pointer" style={{perspective:'1000px'}} onClick={()=>setFlipped(!flipped)}>
               <div className={`absolute inset-0 transition-transform duration-600 preserve-3d ${flipped?'rotate-y-180':''}`} style={{transformStyle:'preserve-3d'}}>
                 {/* FRONT */}
-                <div className="absolute inset-0 backface-hidden bg-white rounded-2xl shadow-xl flex items-center justify-center p-8 border-2 border-indigo-200">
-                  <div className="text-4xl font-bold text-indigo-700">{card.front}</div>
+                <div className="absolute inset-0 backface-hidden bg-white rounded-2xl shadow-xl flex flex-col items-center justify-center p-8 border-2 border-indigo-200">
+                  <div className="text-4xl font-bold text-indigo-700">{c.front}</div>
+                  <p className="text-sm text-gray-500 mt-4">Click to flip</p>
                 </div>
                 {/* BACK */}
-                <div className="absolute inset-0 backface-hidden bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-xl flex items-center justify-center p-6 text-white rotate-y-180">
-                  <div className="text-3xl font-bold text-center">{card.back}</div>
+                <div className="absolute inset-0 backface-hidden bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-xl flex flex-col items-center justify-center p-6 text-white rotate-y-180 overflow-y-auto">
+                  <div className="text-3xl font-bold mb-2">{c.back}</div>
+                  {c.pron && <div className="text-lg italic opacity-90 mb-4">/{c.pron}/</div>}
+                  <p className="text-sm opacity-90 mt-6">Click to flip</p>
                 </div>
               </div>
             </div>
-
             <div className="flex justify-between mt-8">
               <button onClick={prev} className="px-5 py-2 bg-white rounded shadow">Previous</button>
               <button onClick={next} className="px-5 py-2 bg-white rounded shadow">Next</button>
@@ -128,8 +137,7 @@
         </div>
       );
     }
-
-    ReactDOM.render(<App />, document.getElementById('root'));
+    ReactDOM.render(<FlashcardApp />, document.getElementById('root'));
   </script>
 </body>
 </html>
