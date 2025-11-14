@@ -29,7 +29,7 @@
       const [dbId, setDbId] = useState('');
       const [srcId, setSrcId] = useState('');
       const [configured, setConfigured] = useState(false);
-      // ---- URL params ----
+
       useEffect(() => {
         const p = new URLSearchParams(location.search);
         const t = p.get('token'), d = p.get('database'), s = p.get('source');
@@ -38,6 +38,7 @@
           fetchCards(t, d, s||null);
         }
       }, []);
+
       const fetchCards = async (tk, db, specificSrc = null) => {
         setLoading(true); setErr('');
         try {
@@ -48,6 +49,7 @@
           });
           const data = await r.json();
           if (!r.ok) throw new Error(data.error||'load failed');
+
           let all = [];
           if (data.data_sources?.length) {
             if (specificSrc) {
@@ -61,24 +63,37 @@
             all = data.results||[];
             setSourcesCount(1);
           }
+
           const fmt = all
-            .filter(p=>p.properties.Word?.title?.[0]?.plain_text)
-            .map(p=>({
-              id: p.id,
-              front: p.properties.Word.title[0].plain_text,
-              back: p.properties.Translation?.rich_text?.[0]?.plain_text || p.properties.Translation?.text?.[0]?.plain_text || '',
-              pron: p.properties.Pronunciation?.rich_text?.[0]?.plain_text || p.properties.Pronunciation?.text?.[0]?.plain_text || '',
-            }));
-          const uniq = fmt.filter((c,i,a)=>a.findIndex(x=>x.id===c.id)===i);
+            .filter(p => p.properties.Word?.title?.[0]?.plain_text)
+            .map(p => {
+              // Extract example sentence titles from relation
+              const examples = (p.properties['Example Sentence']?.relation || [])
+                .map(rel => rel.title?.[0]?.plain_text)
+                .filter(Boolean)
+                .map(t => `“${t}”`)
+                .join(' | ') || '';
+
+              return {
+                id: p.id,
+                front: p.properties.Word.title[0].plain_text,
+                back: p.properties.Translation?.rich_text?.[0]?.plain_text || p.properties.Translation?.text?.[0]?.plain_text || '',
+                pron: p.properties.Pronunciation?.text?.[0]?.plain_text || p.properties.Pronunciation?.rich_text?.[0]?.plain_text || '',
+                examples,
+              };
+            });
+
+          const uniq = fmt.filter((c,i,a) => a.findIndex(x => x.id === c.id) === i);
           setCards(uniq);
           setConfigured(true);
           if (!uniq.length) setErr('No cards – check property names');
         } catch (e) { setErr(e.message); }
         finally { setLoading(false); }
       };
-      const next = () => { setFlipped(false); setTimeout(()=>setIdx(i=>(i+1)%cards.length),300); };
-      const prev = () => { setFlipped(false); setTimeout(()=>setIdx(i=>(i-1+cards.length)%cards.length),300); };
-      // ---- Config UI ----
+
+      const next = () => { setFlipped(false); setTimeout(() => setIdx(i => (i+1) % cards.length), 300); };
+      const prev = () => { setFlipped(false); setTimeout(() => setIdx(i => (i-1 + cards.length) % cards.length), 300); };
+
       if (!configured) return (
         <div className="min-h-screen flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow p-6 w-full max-w-md space-y-4">
@@ -94,7 +109,9 @@
           </div>
         </div>
       );
+
       if (!cards.length) return <div className="min-h-screen flex items-center justify-center"><p>No cards.</p></div>;
+
       const c = cards[idx];
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-4">
@@ -103,7 +120,7 @@
               <span>Card {idx+1}/{cards.length} ({sourcesCount} source{sourcesCount>1?'s':''})</span>
               <button onClick={()=>{setCards([...cards].sort(()=>Math.random()-0.5));setIdx(0);}} className="underline">Shuffle</button>
             </div>
-            {/* CARD */}
+
             <div className="relative h-80 cursor-pointer" style={{perspective:'1000px'}} onClick={()=>setFlipped(!flipped)}>
               <div className={`absolute inset-0 transition-transform duration-600 preserve-3d ${flipped?'rotate-y-180':''}`} style={{transformStyle:'preserve-3d'}}>
                 {/* FRONT */}
@@ -111,14 +128,22 @@
                   <div className="text-4xl font-bold text-indigo-700">{c.front}</div>
                   <p className="text-sm text-gray-500 mt-4">Click to flip</p>
                 </div>
+
                 {/* BACK */}
                 <div className="absolute inset-0 backface-hidden bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-xl flex flex-col items-center justify-center p-6 text-white rotate-y-180 overflow-y-auto">
                   <div className="text-3xl font-bold mb-2">{c.back}</div>
-                  {c.pron && <div className="text-lg italic opacity-90 mb-4">/{c.pron}/</div>}
+                  {c.pron && <div className="text-lg italic opacity-90 mb-3">/{c.pron}/</div>}
+                  {c.examples && (
+                    <div className="mt-3 text-sm opacity-80 text-center max-w-xs">
+                      <p className="font-semibold mb-1">Examples:</p>
+                      <p className="italic">{c.examples}</p>
+                    </div>
+                  )}
                   <p className="text-sm opacity-90 mt-6">Click to flip</p>
                 </div>
               </div>
             </div>
+
             <div className="flex justify-between mt-8">
               <button onClick={prev} className="px-5 py-2 bg-white rounded shadow">Previous</button>
               <button onClick={next} className="px-5 py-2 bg-white rounded shadow">Next</button>
