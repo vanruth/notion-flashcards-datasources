@@ -29,8 +29,7 @@
       const [dbId, setDbId] = useState('');
       const [srcId, setSrcId] = useState('');
       const [configured, setConfigured] = useState(false);
-
-      // URL params
+      // ---- URL params ----
       useEffect(() => {
         const p = new URLSearchParams(location.search);
         const t = p.get('token'), d = p.get('database'), s = p.get('source');
@@ -39,7 +38,6 @@
           fetchCards(t, d, s||null);
         }
       }, []);
-
       const fetchCards = async (tk, db, specificSrc = null) => {
         setLoading(true); setErr('');
         try {
@@ -50,8 +48,6 @@
           });
           const data = await r.json();
           if (!r.ok) throw new Error(data.error||'load failed');
-
-          // Original parsing: handle data_sources or fallback to results
           let all = [];
           if (data.data_sources?.length) {
             if (specificSrc) {
@@ -65,14 +61,12 @@
             all = data.results||[];
             setSourcesCount(1);
           }
-
-          // Original mapping (updated for Text type if needed; use rich_text if Rich Text)
           const fmt = all
             .filter(p=>p.properties.Word?.title?.[0]?.plain_text)
             .map(p=>({
               id: p.id,
               front: p.properties.Word.title[0].plain_text,
-              back: p.properties.Translation?.rich_text?.[0]?.plain_text || p.properties.Translation?.text?.[0]?.plain_text || '',  // Handles both Rich Text & Text
+              back: p.properties.Translation?.rich_text?.[0]?.plain_text || p.properties.Translation?.text?.[0]?.plain_text || '',
               pron: p.properties.Pronunciation?.rich_text?.[0]?.plain_text || p.properties.Pronunciation?.text?.[0]?.plain_text || '',
             }));
           const uniq = fmt.filter((c,i,a)=>a.findIndex(x=>x.id===c.id)===i);
@@ -82,11 +76,9 @@
         } catch (e) { setErr(e.message); }
         finally { setLoading(false); }
       };
-
       const next = () => { setFlipped(false); setTimeout(()=>setIdx(i=>(i+1)%cards.length),300); };
       const prev = () => { setFlipped(false); setTimeout(()=>setIdx(i=>(i-1+cards.length)%cards.length),300); };
-
-      // Config UI
+      // ---- Config UI ----
       if (!configured) return (
         <div className="min-h-screen flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow p-6 w-full max-w-md space-y-4">
@@ -102,9 +94,7 @@
           </div>
         </div>
       );
-
       if (!cards.length) return <div className="min-h-screen flex items-center justify-center"><p>No cards.</p></div>;
-
       const c = cards[idx];
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-4">
