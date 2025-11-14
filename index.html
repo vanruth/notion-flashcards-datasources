@@ -127,30 +127,36 @@
         setIdx(0);
         setFlipped(false);
         setUserInput('');
+        setIsEraser(false);
         if (canvasRef.current) {
           const ctx = canvasRef.current.getContext('2d');
-          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          const rect = canvasRef.current.getBoundingClientRect();
+          ctx.clearRect(0, 0, rect.width, rect.height);
         }
       }, [filteredAndSorted]);
 
       const next = () => {
         setFlipped(false);
         setUserInput('');
+        setIsEraser(false);
         if (canvasRef.current) {
           const ctx = canvasRef.current.getContext('2d');
-          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          const rect = canvasRef.current.getBoundingClientRect();
+          ctx.clearRect(0, 0, rect.width, rect.height);
         }
-        setTimeout(() => setIdx(i => (i+1) % cards.length), 300);
+        setTimeout(() => setIdx(i => (i + 1) % cards.length), 300);
       };
 
       const prev = () => {
         setFlipped(false);
         setUserInput('');
+        setIsEraser(false);
         if (canvasRef.current) {
           const ctx = canvasRef.current.getContext('2d');
-          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          const rect = canvasRef.current.getBoundingClientRect();
+          ctx.clearRect(0, 0, rect.width, rect.height);
         }
-        setTimeout(() => setIdx(i => (i-1 + cards.length) % cards.length), 300);
+        setTimeout(() => setIdx(i => (i - 1 + cards.length) % cards.length), 300);
       };
 
       // Canvas Drawing — ZERO OFFSET
@@ -162,7 +168,6 @@
         const dpr = window.devicePixelRatio || 1;
         const rect = canvas.getBoundingClientRect();
 
-        // Set actual size in memory (scaled for retina)
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
         ctx.scale(dpr, dpr);
@@ -280,16 +285,17 @@
               </div>
             )}
 
-            {/* FLASHCARD */}
-            <div className="relative h-80 cursor-pointer mb-6" style={{perspective:'1000px'}} onClick={() => {
-              if (practiceMode === 'none' || flipped) setFlipped(!flipped);
-            }}>
+            {/* CARD COUNTER */}
+            <div className="text-center text-sm text-gray-600 mb-2">
+              Card {idx + 1}/{cards.length}
+            </div>
+
+            {/* FLASHCARD — CLICK TO FLIP */}
+            <div className="relative h-80 cursor-pointer mb-6" style={{perspective:'1000px'}} onClick={() => setFlipped(!flipped)}>
               <div className={`absolute inset-0 transition-transform duration-600 preserve-3d ${flipped?'rotate-y-180':''}`} style={{transformStyle:'preserve-3d'}}>
                 <div className="absolute inset-0 backface-hidden bg-white rounded-2xl shadow-xl flex flex-col items-center justify-center p-8 border-2 border-indigo-200">
                   <div className="text-4xl font-bold text-indigo-700">{frontText}</div>
-                  <p className="text-sm text-gray-500 mt-4">
-                    {practiceMode !== 'none' && !flipped ? 'Answer below, then press "Show Answer"' : 'Click to flip'}
-                  </p>
+                  <p className="text-sm text-gray-500 mt-4">Click to flip</p>
                 </div>
 
                 <div className="absolute inset-0 backface-hidden bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-xl flex flex-col items-center justify-center p-6 text-white rotate-y-180 overflow-y-auto">
@@ -340,18 +346,6 @@
                     style={{ touchAction: 'none', userSelect: 'none' }}
                   />
                 )}
-              </div>
-            )}
-
-            {/* SHOW ANSWER */}
-            {practiceMode !== 'none' && !flipped && (
-              <div className="text-center mb-6">
-                <button
-                  onClick={() => setFlipped(true)}
-                  className="px-8 py-3 bg-indigo-600 text-white rounded-lg shadow-lg hover:bg-indigo-700 text-lg font-medium"
-                >
-                  Show Answer
-                </button>
               </div>
             )}
 
