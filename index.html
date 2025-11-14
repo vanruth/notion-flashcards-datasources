@@ -163,7 +163,7 @@
         setTimeout(() => setIdx(i => (i-1 + cards.length) % cards.length), 300);
       };
 
-      // Canvas Drawing (smooth + eraser)
+      // Canvas Drawing — Fixed offset!
       useEffect(() => {
         if (practiceMode !== 'draw' || !canvasRef.current) return;
 
@@ -171,30 +171,36 @@
         const ctx = canvas.getContext('2d');
         let drawing = false;
 
+        const getCoords = (e) => {
+          const rect = canvas.getBoundingClientRect();
+          const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+          const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+          return {
+            x: clientX - rect.left,
+            y: clientY - rect.top
+          };
+        };
+
         const start = (e) => {
           drawing = true;
-          const rect = canvas.getBoundingClientRect();
-          const x = e.clientX || e.touches[0].clientX;
-          const y = e.clientY || e.touches[0].clientY;
+          const { x, y } = getCoords(e);
           ctx.beginPath();
-          ctx.moveTo(x - rect.left, y - rect.top);
+          ctx.moveTo(x, y);
         };
 
         const draw = (e) => {
           if (!drawing) return;
-          const rect = canvas.getBoundingClientRect();
-          const x = e.clientX || e.touches[0].clientX;
-          const y = e.clientY || e.touches[0].clientY;
+          const { x, y } = getCoords(e);
 
           ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
           ctx.lineWidth = isEraser ? 20 : 3;
           ctx.lineCap = 'round';
           ctx.strokeStyle = isEraser ? '' : '#4f46e5';
 
-          ctx.lineTo(x - rect.left, y - rect.top);
+          ctx.lineTo(x, y);
           ctx.stroke();
           ctx.beginPath();
-          ctx.moveTo(x - rect.left, y - rect.top);
+          ctx.moveTo(x, y);
         };
 
         const stop = () => { drawing = false; };
@@ -282,7 +288,7 @@
             </div>
 
             {/* DRAW TOOLS (only in draw mode) */}
-            {practiceMode === 'draw' && !flipped && (
+            {practiceMode === 'draw' && (
               <div className="mb-4 flex gap-2 justify-center">
                 <button
                   onClick={() => setIsEraser(false)}
@@ -299,28 +305,8 @@
               </div>
             )}
 
-            {/* INPUT / DRAW AREA */}
-            {!flipped && practiceMode !== 'none' && (
-              <div className="mb-4 p-4 bg-white rounded-lg shadow border">
-                {practiceMode === 'text' ? (
-                  <textarea
-                    value={userInput}
-                    onChange={e => setUserInput(e.target.value)}
-                    placeholder="Type your answer here..."
-                    className="w-full h-24 p-2 border rounded resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                ) : (
-                  <canvas
-                    ref={canvasRef}
-                    width={400}
-                    height={150}
-                    className="w-full border rounded bg-gray-50 cursor-crosshair"
-                  />
-                )}
-              </div>
-            )}
-
-            <div className="relative h-80 cursor-pointer" style={{perspective:'1000px'}} onClick={() => {
+            {/* FLASHCARD */}
+            <div className="relative h-80 cursor-pointer mb-6" style={{perspective:'1000px'}} onClick={() => {
               if (practiceMode === 'none' || flipped) setFlipped(!flipped);
             }}>
               <div className={`absolute inset-0 transition-transform duration-600 preserve-3d ${flipped?'rotate-y-180':''}`} style={{transformStyle:'preserve-3d'}}>
@@ -328,7 +314,7 @@
                 <div className="absolute inset-0 backface-hidden bg-white rounded-2xl shadow-xl flex flex-col items-center justify-center p-8 border-2 border-indigo-200">
                   <div className="text-4xl font-bold text-indigo-700">{frontText}</div>
                   <p className="text-sm text-gray-500 mt-4">
-                    {practiceMode !== 'none' && !flipped ? 'Answer below, then click "Show Answer"' : 'Click to flip'}
+                    {practiceMode !== 'none' && !flipped ? 'Answer below, then press "Show Answer"' : 'Click to flip'}
                   </p>
                 </div>
 
@@ -362,19 +348,41 @@
               </div>
             </div>
 
-            {/* SHOW ANSWER BUTTON */}
-            {!flipped && practiceMode !== 'none' && (
-              <div className="mt-6 text-center">
+            {/* PRACTICE AREA BELOW CARD */}
+            {practiceMode !== 'none' && (
+              <div className="mb-6 p-4 bg-white rounded-lg shadow border">
+                {practiceMode === 'text' ? (
+                  <textarea
+                    value={userInput}
+                    onChange={e => setUserInput(e.target.value)}
+                    placeholder="Type your answer here..."
+                    className="w-full h-24 p-2 border rounded resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                ) : (
+                  <canvas
+                    ref={canvasRef}
+                    width={400}
+                    height={150}
+                    className="w-full border rounded bg-gray-50"
+                    style={{ touchAction: 'none' }}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* SHOW ANSWER BUTTON (only in practice mode) */}
+            {practiceMode !== 'none' && !flipped && (
+              <div className="text-center mb-6">
                 <button
                   onClick={() => setFlipped(true)}
-                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700"
+                  className="px-8 py-3 bg-indigo-600 text-white rounded-lg shadow-lg hover:bg-indigo-700 text-lg font-medium"
                 >
                   Show Answer
                 </button>
               </div>
             )}
 
-            <div className="flex justify-between mt-8">
+            <div className="flex justify-between">
               <button onClick={prev} className="px-5 py-2 bg-white rounded shadow">Previous</button>
               <button onClick={next} className="px-5 py-2 bg-white rounded shadow">Next</button>
             </div>
