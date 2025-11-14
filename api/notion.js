@@ -9,15 +9,11 @@ export default async function handler(req, res) {
   const { token, databaseId, sourceId } = req.body;
   if (!token || !databaseId) return res.status(400).json({ error: 'token & databaseId required' });
 
-  const version = '2025-09-03';  // Updated for data sources support
+  const version = '2025-09-03';
 
   try {
-    // 1. Get DB to discover data_sources
     const dbRes = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Notion-Version': version,
-      },
+      headers: { Authorization: `Bearer ${token}`, 'Notion-Version': version }
     });
     if (!dbRes.ok) {
       const err = await dbRes.json();
@@ -27,52 +23,34 @@ export default async function handler(req, res) {
     const sources = db.data_sources || [];
     const results = [];
 
-    if (sourceId) {
-      // Single source
-      if (!sources.some(s => s.id === sourceId)) {
-        return res.status(404).json({ error: 'sourceId not found' });
-      }
-      const q = await fetch(`https://api.notion.com/v1/data_sources/${sourceId}/query`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Notion-Version': version,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      });
-      const d = await q.json();
-      results.push(...(d.results || []));
-    } else if (sources.length) {
-      // Multi-source
-      for (const s of sources) {
-        const q = await fetch(`https://api.notion.com/v1/data_sources/${s.id}/query`, {
+    // Helper: fetch all pages with pagination
+    const fetchAll = async (url, body = {}) => {
+      let start_cursor = undefined;
+      do {
+        const res = await fetch(url, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
             'Notion-Version': version,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ ...body, start_cursor, page_size: 100 })
         });
-        if (q.ok) {
-          const d = await q.json();
-          results.push(...(d.results || []));
-        }
+        const data = await res.json();
+        results.push(...(data.results || []));
+        start_cursor = data.next_cursor;
+      } while (start_cursor);
+    };
+
+    if (sourceId) {
+      if (!sources.some(s => s.id === sourceId)) return res.status(404).json({ error: 'sourceId not found' });
+      await fetchAll(`https://api.notion.com/v1/data_sources/${sourceId}/query`);
+    } else if (sources.length) {
+      for (const s of sources) {
+        await fetchAll(`https://api.notion.com/v1/data_sources/${s.id}/query`);
       }
     } else {
-      // Legacy single DB
-      const q = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Notion-Version': version,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      });
-      const d = await q.json();
-      results.push(...(d.results || []));
+      await fetchAll(`https://api.notion.com/v1/databases/${databaseId}/query`);
     }
 
     res.status(200).json({ results });
