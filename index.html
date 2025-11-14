@@ -21,22 +21,22 @@
 
     function FlashcardApp() {
       const [cards, setCards] = useState([]);
-      const [allCards, setAllCards] = useState([]); // raw from API
+      const [allCards, setAllCards] = useState([]);
       const [sourcesCount, setSourcesCount] = useState(0);
       const [idx, setIdx] = useState(0);
       const [flipped, setFlipped] = useState(false);
-      const [loading, setLoading] = useState(false);
+      the [loading, setLoading] = useState(false);
       const [err, setErr] = useState('');
       const [token, setToken] = useState('');
       const [dbId, setDbId] = useState('');
       const [srcId, setSrcId] = useState('');
       const [configured, setConfigured] = useState(false);
 
-      // New: Filter & Sort
+      // Filter & Sort
       const [selectedLang, setSelectedLang] = useState('All');
+      const [sortBy, setSortBy] = useState('Newest');
       const [languages, setLanguages] = useState([]);
 
-      // Load from URL
       useEffect(() => {
         const p = new URLSearchParams(location.search);
         const t = p.get('token'), d = p.get('database'), s = p.get('source');
@@ -97,7 +97,6 @@
           const uniq = fmt.filter((c,i,a) => a.findIndex(x=>x.id===c.id)===i);
           setAllCards(uniq);
 
-          // Extract unique languages
           const langs = ['All', ...new Set(uniq.map(c => c.lang))].sort();
           setLanguages(langs);
 
@@ -110,8 +109,20 @@
       // Filter + Sort
       const filteredAndSorted = useMemo(() => {
         let filtered = selectedLang === 'All' ? allCards : allCards.filter(c => c.lang === selectedLang);
-        return filtered.sort((a, b) => new Date(b.date) - new Date(a.date)); // newest first
-      }, [allCards, selectedLang]);
+
+        switch (sortBy) {
+          case 'Newest':
+            return filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+          case 'Oldest':
+            return filtered.sort((a, b) => new Date(a.date) - new Date(b.date));
+          case 'A-Z':
+            return filtered.sort((a, b) => a.front.localeCompare(b.front));
+          case 'Z-A':
+            return filtered.sort((a, b) => b.front.localeCompare(a.front));
+          default:
+            return filtered;
+        }
+      }, [allCards, selectedLang, sortBy]);
 
       useEffect(() => {
         setCards(filteredAndSorted);
@@ -143,8 +154,8 @@
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-lg">
-            {/* Filter Bar */}
-            <div className="mb-4 flex justify-between items-center">
+            {/* FILTER & SORT BAR */}
+            <div className="mb-4 flex gap-2 items-center flex-wrap">
               <select
                 value={selectedLang}
                 onChange={e => setSelectedLang(e.target.value)}
@@ -154,7 +165,19 @@
                   <option key={l} value={l}>{l === 'All' ? 'All Languages' : l}</option>
                 ))}
               </select>
-              <span className="text-sm text-gray-600">{cards.length} card{cards.length > 1 ? 's' : ''}</span>
+
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value)}
+                className="px-3 py-1 border rounded text-sm"
+              >
+                <option>Newest</option>
+                <option>Oldest</option>
+                <option>A-Z</option>
+                <option>Z-A</option>
+              </select>
+
+              <span className="text-sm text-gray-600 ml-auto">{cards.length} card{cards.length > 1 ? 's' : ''}</span>
             </div>
 
             <div className="flex justify-between mb-4 text-sm">
