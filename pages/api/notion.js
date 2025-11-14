@@ -1,13 +1,9 @@
 // pages/api/notion.js
 export default async function handler(req, res) {
-  // ---------- CORS ----------
-  res.setHeader('Access-Control-Allow-Credentials', true);
+  // CORS – required for browser
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'Content-Type,Authorization,Accept'
-  );
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
@@ -16,29 +12,26 @@ export default async function handler(req, res) {
   if (!token || !databaseId) return res.status(400).json({ error: 'token & databaseId required' });
 
   try {
-    // 1. Get DB meta (to discover data_sources)
+    // 1. Get DB to discover data_sources
     const dbRes = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
       headers: {
         Authorization: `Bearer ${token}`,
         'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json',
       },
     });
     if (!dbRes.ok) {
-      const e = await dbRes.json();
-      return res.status(dbRes.status).json({ error: e.message ?? 'DB fetch failed' });
+      const err = await dbRes.json();
+      return res.status(dbRes.status).json({ error: err.message || 'DB fetch failed' });
     }
     const db = await dbRes.json();
-    const dataSources = db.data_sources || [];
-
-    let results = [];
-    let sources = [];
+    const sources = db.data_sources || [];
+    const results = [];
 
     if (sourceId) {
-      // ---- single source ----
-      if (!dataSources.some(s => s.id === sourceId))
+      // Single source
+      if (!sources.some(s => s.id === sourceId)) {
         return res.status(404).json({ error: 'sourceId not found' });
-
+      }
       const q = await fetch(`https://api.notion.com/v1/data_sources/${sourceId}/query`, {
         method: 'POST',
         headers: {
@@ -49,12 +42,11 @@ export default async function handler(req, res) {
         body: JSON.stringify({}),
       });
       const d = await q.json();
-      results = d.results || [];
-      sources = [{ id: sourceId, results }];
-    } else if (dataSources.length) {
-      // ---- multi source ----
-      for (const src of dataSources) {
-        const q = await fetch(`https://api.notion.com/v1/data_sources/${src.id}/query`, {
+      results.push(...(d.results || []));
+    } else if (sources.length) {
+      // Multi-source
+      for (const s of sources) {
+        const q = await fetch(`https://api.notion.com/v1/data_sources/${s.id}/query`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -65,13 +57,11 @@ export default async function handler(req, res) {
         });
         if (q.ok) {
           const d = await q.json();
-          const r = d.results || [];
-          sources.push({ id: src.id, results: r });
-          results.push(...r);
+          results.push(...(d.results || []));
         }
       }
     } else {
-      // ---- legacy single DB ----
+      // Legacy single DB
       const q = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
         method: 'POST',
         headers: {
@@ -82,12 +72,12 @@ export default async function handler(req, res) {
         body: JSON.stringify({}),
       });
       const d = await q.json();
-      results = d.results || [];
+      results.push(...(d.results || []));
     }
 
-    return res.status(200).json({ results, data_sources: sources });
+    res.status(200).json({ results });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message });
   }
 }
