@@ -9,12 +9,14 @@ export default async function handler(req, res) {
   const { token, databaseId, sourceId } = req.body;
   if (!token || !databaseId) return res.status(400).json({ error: 'token & databaseId required' });
 
+  const version = '2025-09-03';  // Updated for data sources support
+
   try {
     // 1. Get DB to discover data_sources
     const dbRes = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
       headers: {
         Authorization: `Bearer ${token}`,
-        'Notion-Version': '2022-06-28',
+        'Notion-Version': version,
       },
     });
     if (!dbRes.ok) {
@@ -34,7 +36,7 @@ export default async function handler(req, res) {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
-          'Notion-Version': '2022-06-28',
+          'Notion-Version': version,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({}),
@@ -48,7 +50,7 @@ export default async function handler(req, res) {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
-            'Notion-Version': '2022-06-28',
+            'Notion-Version': version,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({}),
@@ -64,7 +66,7 @@ export default async function handler(req, res) {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
-          'Notion-Version': '2022-06-28',
+          'Notion-Version': version,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({}),
@@ -73,7 +75,6 @@ export default async function handler(req, res) {
       results.push(...(d.results || []));
     }
 
-    // Return flattened results (as original)
     res.status(200).json({ results });
   } catch (e) {
     console.error(e);
