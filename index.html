@@ -40,11 +40,11 @@
       // Front/Back Toggle
       const [wordFirst, setWordFirst] = useState(true);
 
-      // Practice Mode
+      // Practice Mode (sticky)
       const [practiceMode, setPracticeMode] = useState('none'); // 'none', 'text', 'draw'
       const [userInput, setUserInput] = useState('');
       const canvasRef = useRef(null);
-      const [drawing, setDrawing] = useState(false);
+      const [isEraser, setIsEraser] = useState(false);
 
       useEffect(() => {
         const p = new URLSearchParams(location.search);
@@ -137,7 +137,6 @@
         setIdx(0);
         setFlipped(false);
         setUserInput('');
-        setPracticeMode('none');
         if (canvasRef.current) {
           const ctx = canvasRef.current.getContext('2d');
           ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
@@ -147,7 +146,6 @@
       const next = () => {
         setFlipped(false);
         setUserInput('');
-        setPracticeMode('none');
         if (canvasRef.current) {
           const ctx = canvasRef.current.getContext('2d');
           ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
@@ -158,7 +156,6 @@
       const prev = () => {
         setFlipped(false);
         setUserInput('');
-        setPracticeMode('none');
         if (canvasRef.current) {
           const ctx = canvasRef.current.getContext('2d');
           ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
@@ -166,53 +163,51 @@
         setTimeout(() => setIdx(i => (i-1 + cards.length) % cards.length), 300);
       };
 
-      // Canvas Drawing
+      // Canvas Drawing (smooth + eraser)
       useEffect(() => {
         if (practiceMode !== 'draw' || !canvasRef.current) return;
+
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#4f46e5';
-        ctx.lineCap = 'round';
+        let drawing = false;
+
+        const start = (e) => {
+          drawing = true;
+          const rect = canvas.getBoundingClientRect();
+          const x = e.clientX || e.touches[0].clientX;
+          const y = e.clientY || e.touches[0].clientY;
+          ctx.beginPath();
+          ctx.moveTo(x - rect.left, y - rect.top);
+        };
 
         const draw = (e) => {
           if (!drawing) return;
           const rect = canvas.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const y = e.clientY - rect.top;
-          ctx.lineTo(x, y);
+          const x = e.clientX || e.touches[0].clientX;
+          const y = e.clientY || e.touches[0].clientY;
+
+          ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+          ctx.lineWidth = isEraser ? 20 : 3;
+          ctx.lineCap = 'round';
+          ctx.strokeStyle = isEraser ? '' : '#4f46e5';
+
+          ctx.lineTo(x - rect.left, y - rect.top);
           ctx.stroke();
           ctx.beginPath();
-          ctx.moveTo(x, y);
+          ctx.moveTo(x - rect.left, y - rect.top);
         };
 
-        const start = (e) => {
-          setDrawing(true);
-          const rect = canvas.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const y = e.clientY - rect.top;
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-        };
+        const stop = () => { drawing = false; };
 
-        const stop = () => setDrawing(false);
-
+        // Mouse
         canvas.addEventListener('mousedown', start);
         canvas.addEventListener('mousemove', draw);
         canvas.addEventListener('mouseup', stop);
         canvas.addEventListener('mouseout', stop);
 
-        // Touch support
-        canvas.addEventListener('touchstart', (e) => {
-          e.preventDefault();
-          const touch = e.touches[0];
-          start({ clientX: touch.clientX, clientY: touch.clientY });
-        });
-        canvas.addEventListener('touchmove', (e) => {
-          e.preventDefault();
-          const touch = e.touches[0];
-          draw({ clientX: touch.clientX, clientY: touch.clientY });
-        });
+        // Touch
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); start(e.touches[0]); });
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e.touches[0]); });
         canvas.addEventListener('touchend', stop);
 
         return () => {
@@ -221,7 +216,14 @@
           canvas.removeEventListener('mouseup', stop);
           canvas.removeEventListener('mouseout', stop);
         };
-      }, [practiceMode, drawing]);
+      }, [practiceMode, isEraser]);
+
+      const clearCanvas = () => {
+        if (canvasRef.current) {
+          const ctx = canvasRef.current.getContext('2d');
+          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        }
+      };
 
       if (!configured) return (
         <div className="min-h-screen flex items-center justify-center p-4">
@@ -263,26 +265,37 @@
               <span className="text-gray-600 ml-auto">{cards.length} card{cards.length > 1 ? 's' : ''}</span>
             </div>
 
-            <div className="flex justify-between mb-4 text-sm">
-              <span>Card {idx+1}/{cards.length} ({sourcesCount} source{sourcesCount>1?'s':''})</span>
-              <button onClick={()=>{setCards([...cards].sort(()=>Math.random()-0.5));setIdx(0);}} className="underline">Shuffle</button>
+            {/* STICKY PRACTICE MODE SELECTOR */}
+            <div className="mb-4 flex gap-2 justify-center text-sm">
+              <button
+                onClick={() => setPracticeMode('none')}
+                className={`px-3 py-1 rounded ${practiceMode === 'none' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}
+              >Just Flip</button>
+              <button
+                onClick={() => setPracticeMode('text')}
+                className={`px-3 py-1 rounded ${practiceMode === 'text' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}
+              >Write</button>
+              <button
+                onClick={() => setPracticeMode('draw')}
+                className={`px-3 py-1 rounded ${practiceMode === 'draw' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}
+              >Draw</button>
             </div>
 
-            {/* PRACTICE MODE SELECTOR */}
-            {!flipped && (
+            {/* DRAW TOOLS (only in draw mode) */}
+            {practiceMode === 'draw' && !flipped && (
               <div className="mb-4 flex gap-2 justify-center">
                 <button
-                  onClick={() => { setPracticeMode('none'); setUserInput(''); }}
-                  className={`px-3 py-1 rounded ${practiceMode === 'none' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}
-                >Just Flip</button>
+                  onClick={() => setIsEraser(false)}
+                  className={`px-3 py-1 rounded text-xs ${!isEraser ? 'bg-indigo-600 text-white' : 'bg-white border'}`}
+                >Pen</button>
                 <button
-                  onClick={() => { setPracticeMode('text'); setUserInput(''); }}
-                  className={`px-3 py-1 rounded ${practiceMode === 'text' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}
-                >Write</button>
+                  onClick={() => setIsEraser(true)}
+                  className={`px-3 py-1 rounded text-xs ${isEraser ? 'bg-red-600 text-white' : 'bg-white border'}`}
+                >Eraser</button>
                 <button
-                  onClick={() => { setPracticeMode('draw'); setUserInput(''); if (canvasRef.current) { const ctx = canvasRef.current.getContext('2d'); ctx.clearRect(0,0,canvasRef.current.width,canvasRef.current.height); }}}
-                  className={`px-3 py-1 rounded ${practiceMode === 'draw' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}
-                >Draw</button>
+                  onClick={clearCanvas}
+                  className="px-3 py-1 rounded text-xs bg-gray-600 text-white"
+                >Clear</button>
               </div>
             )}
 
@@ -315,7 +328,7 @@
                 <div className="absolute inset-0 backface-hidden bg-white rounded-2xl shadow-xl flex flex-col items-center justify-center p-8 border-2 border-indigo-200">
                   <div className="text-4xl font-bold text-indigo-700">{frontText}</div>
                   <p className="text-sm text-gray-500 mt-4">
-                    {practiceMode !== 'none' && !flipped ? 'Answer below, then click to flip' : 'Click to flip'}
+                    {practiceMode !== 'none' && !flipped ? 'Answer below, then click "Show Answer"' : 'Click to flip'}
                   </p>
                 </div>
 
@@ -336,7 +349,10 @@
                         <p className="italic mt-1 break-words">{userInput || '(empty)'}</p>
                       ) : (
                         <div className="mt-1 bg-white rounded p-1">
-                          <canvas ref={el => el && canvasRef.current && el.getContext('2d').drawImage(canvasRef.current, 0, 0, 200, 75)} width={200} height={75} className="w-full border"/>
+                          <canvas
+                            ref={el => el && canvasRef.current && el.getContext('2d').drawImage(canvasRef.current, 0, 0, 200, 75)}
+                            width={200} height={75} className="w-full border"
+                          />
                         </div>
                       )}
                     </div>
@@ -346,7 +362,7 @@
               </div>
             </div>
 
-            {/* FLIP BUTTON (only in practice mode) */}
+            {/* SHOW ANSWER BUTTON */}
             {!flipped && practiceMode !== 'none' && (
               <div className="mt-6 text-center">
                 <button
