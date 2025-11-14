@@ -17,9 +17,11 @@
 <body class="bg-gradient-to-br from-indigo-50 to-purple-50 min-h-screen">
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useMemo } = React;
+
     function FlashcardApp() {
       const [cards, setCards] = useState([]);
+      const [allCards, setAllCards] = useState([]); // raw from API
       const [sourcesCount, setSourcesCount] = useState(0);
       const [idx, setIdx] = useState(0);
       const [flipped, setFlipped] = useState(false);
@@ -30,6 +32,11 @@
       const [srcId, setSrcId] = useState('');
       const [configured, setConfigured] = useState(false);
 
+      // New: Filter & Sort
+      const [selectedLang, setSelectedLang] = useState('All');
+      const [languages, setLanguages] = useState([]);
+
+      // Load from URL
       useEffect(() => {
         const p = new URLSearchParams(location.search);
         const t = p.get('token'), d = p.get('database'), s = p.get('source');
@@ -67,12 +74,14 @@
           const fmt = all
             .filter(p => p.properties.Word?.title?.[0]?.plain_text)
             .map(p => {
-              // Extract example sentence titles from relation
               const examples = (p.properties['Example Sentence']?.relation || [])
                 .map(rel => rel.title?.[0]?.plain_text)
                 .filter(Boolean)
                 .map(t => `“${t}”`)
                 .join(' | ') || '';
+
+              const lang = p.properties.Language?.select?.name || 'Unknown';
+              const date = p.properties['Date Added']?.date?.start || '1970-01-01';
 
               return {
                 id: p.id,
@@ -80,16 +89,34 @@
                 back: p.properties.Translation?.rich_text?.[0]?.plain_text || p.properties.Translation?.text?.[0]?.plain_text || '',
                 pron: p.properties.Pronunciation?.text?.[0]?.plain_text || p.properties.Pronunciation?.rich_text?.[0]?.plain_text || '',
                 examples,
+                lang,
+                date,
               };
             });
 
-          const uniq = fmt.filter((c,i,a) => a.findIndex(x => x.id === c.id) === i);
-          setCards(uniq);
+          const uniq = fmt.filter((c,i,a) => a.findIndex(x=>x.id===c.id)===i);
+          setAllCards(uniq);
+
+          // Extract unique languages
+          const langs = ['All', ...new Set(uniq.map(c => c.lang))].sort();
+          setLanguages(langs);
+
           setConfigured(true);
           if (!uniq.length) setErr('No cards – check property names');
         } catch (e) { setErr(e.message); }
         finally { setLoading(false); }
       };
+
+      // Filter + Sort
+      const filteredAndSorted = useMemo(() => {
+        let filtered = selectedLang === 'All' ? allCards : allCards.filter(c => c.lang === selectedLang);
+        return filtered.sort((a, b) => new Date(b.date) - new Date(a.date)); // newest first
+      }, [allCards, selectedLang]);
+
+      useEffect(() => {
+        setCards(filteredAndSorted);
+        setIdx(0);
+      }, [filteredAndSorted]);
 
       const next = () => { setFlipped(false); setTimeout(() => setIdx(i => (i+1) % cards.length), 300); };
       const prev = () => { setFlipped(false); setTimeout(() => setIdx(i => (i-1 + cards.length) % cards.length), 300); };
@@ -116,6 +143,20 @@
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-lg">
+            {/* Filter Bar */}
+            <div className="mb-4 flex justify-between items-center">
+              <select
+                value={selectedLang}
+                onChange={e => setSelectedLang(e.target.value)}
+                className="px-3 py-1 border rounded text-sm"
+              >
+                {languages.map(l => (
+                  <option key={l} value={l}>{l === 'All' ? 'All Languages' : l}</option>
+                ))}
+              </select>
+              <span className="text-sm text-gray-600">{cards.length} card{cards.length > 1 ? 's' : ''}</span>
+            </div>
+
             <div className="flex justify-between mb-4 text-sm">
               <span>Card {idx+1}/{cards.length} ({sourcesCount} source{sourcesCount>1?'s':''})</span>
               <button onClick={()=>{setCards([...cards].sort(()=>Math.random()-0.5));setIdx(0);}} className="underline">Shuffle</button>
