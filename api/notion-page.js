@@ -1,35 +1,28 @@
 // pages/api/notion-page.js
-
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  // ---------- CORS ----------
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
   const { token, pageId } = req.body;
-
-  if (!token || !pageId) {
-    return res.status(400).json({ error: 'Missing token or pageId' });
-  }
+  if (!token || !pageId) return res.status(400).json({ error: 'token & pageId required' });
 
   try {
-    const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-      method: 'GET',
+    const r = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json',
       },
     });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to fetch page');
-    }
-
-    const page = await response.json();
-    res.status(200).json(page);
-  } catch (err) {
-    console.error('Error fetching Notion page:', err);
-    res.status(500).json({ error: err.message });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.message ?? 'page fetch failed');
+    res.status(200).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
   }
 }
