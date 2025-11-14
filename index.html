@@ -30,13 +30,12 @@
       const [dbId, setDbId] = useState('');
       const [ready, setReady] = useState(false);
 
+      // Load from URL params
       useEffect(() => {
-        const url = new URLSearchParams(location.search);
-        const t = url.get('token');
-        const d = url.get('database');
+        const p = new URLSearchParams(location.search);
+        const t = p.get('token'), d = p.get('database');
         if (t && d) {
-          setToken(t);
-          setDbId(d);
+          setToken(t); setDbId(d);
           load(t, d);
         } else {
           setReady(true);
@@ -44,8 +43,7 @@
       }, []);
 
       const load = async (tk, db) => {
-        setLoading(true);
-        setErr('');
+        setLoading(true); setErr('');
         try {
           const r = await fetch('/api/notion', {
             method: 'POST',
@@ -56,17 +54,19 @@
           if (!r.ok) throw new Error(data.error || 'Failed');
 
           const items = (data.results || [])
-            .filter(p => p.properties?.Word?.title?.[0]?.plain_text)
+            // Title property is usually called "Name" – change to "Word" if you renamed it
+            .filter(p => p.properties?.Name?.title?.[0]?.plain_text)
             .map(p => ({
               id: p.id,
-              front: p.properties.Word.title[0].plain_text,
-              back: p.properties.Translation?.rich_text?.[0]?.plain_text || '',
+              front: p.properties.Name.title[0].plain_text,
+              // Translation is a **Text** property, not Rich Text
+              back: p.properties?.Text?.text?.[0]?.plain_text || '',
             }));
 
           const uniq = items.filter((c, i, a) => a.findIndex(x => x.id === c.id) === i);
           setCards(uniq);
           setReady(true);
-          if (!uniq.length) setErr('No cards. Check: "Word" (title), "Translation" (text)');
+          if (!uniq.length) setErr('No cards – check property names: Title → "Name", Text → "Text"');
         } catch (e) {
           setErr(e.message);
         } finally {
@@ -77,16 +77,17 @@
       const next = () => { setFlipped(false); setTimeout(() => setIdx((i + 1) % cards.length), 300); };
       const prev = () => { setFlipped(false); setTimeout(() => setIdx((i - 1 + cards.length) % cards.length), 300); };
 
+      // ---------- Config UI ----------
       if (!ready) {
         return (
           <div className="min-h-screen flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow p-6 w-full max-w-md space-y-4">
               <h1 className="text-2xl font-bold text-center">Flashcards</h1>
-              <input type="password" placeholder="Notion Token" value={token} onChange={e => setToken(e.target.value)} className="w-full p-2 border rounded"/>
-              <input type="text" placeholder="Database ID" value={dbId} onChange={e => setDbId(e.target.value)} className="w-full p-2 border rounded"/>
-              <button onClick={() => load(token, dbId)} disabled={loading || !token || !dbId}
+              <input type="password" placeholder="Notion Token" value={token} onChange={e=>setToken(e.target.value)} className="w-full p-2 border rounded"/>
+              <input type="text" placeholder="Database ID" value={dbId} onChange={e=>setDbId(e.target.value)} className="w-full p-2 border rounded"/>
+              <button onClick={()=>load(token,dbId)} disabled={loading||!token||!dbId}
                       className="w-full bg-indigo-600 text-white py-2 rounded disabled:opacity-50">
-                {loading ? 'Loading...' : 'Load'}
+                {loading?'Loading…':'Load'}
               </button>
               {err && <p className="text-red-600 text-sm">{err}</p>}
             </div>
@@ -102,15 +103,17 @@
         <div className="min-h-screen flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-lg">
             <div className="flex justify-between mb-4 text-sm">
-              <span>{idx + 1}/{cards.length}</span>
-              <button onClick={() => { setCards([...cards].sort(() => Math.random() - 0.5)); setIdx(0); }} className="underline">Shuffle</button>
+              <span>{idx+1}/{cards.length}</span>
+              <button onClick={()=>{setCards([...cards].sort(()=>Math.random()-0.5));setIdx(0);}} className="underline">Shuffle</button>
             </div>
 
-            <div className="relative h-80 cursor-pointer" style={{ perspective: '1000px' }} onClick={() => setFlipped(!flipped)}>
-              <div className={`absolute inset-0 transition-transform duration-600 preserve-3d ${flipped ? 'rotate-y-180' : ''}`} style={{ transformStyle: 'preserve-3d' }}>
+            <div className="relative h-80 cursor-pointer" style={{perspective:'1000px'}} onClick={()=>setFlipped(!flipped)}>
+              <div className={`absolute inset-0 transition-transform duration-600 preserve-3d ${flipped?'rotate-y-180':''}`} style={{transformStyle:'preserve-3d'}}>
+                {/* FRONT */}
                 <div className="absolute inset-0 backface-hidden bg-white rounded-2xl shadow-xl flex items-center justify-center p-8 border-2 border-indigo-200">
                   <div className="text-4xl font-bold text-indigo-700">{card.front}</div>
                 </div>
+                {/* BACK */}
                 <div className="absolute inset-0 backface-hidden bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-xl flex items-center justify-center p-6 text-white rotate-y-180">
                   <div className="text-3xl font-bold text-center">{card.back}</div>
                 </div>
