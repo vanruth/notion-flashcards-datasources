@@ -1,10 +1,8 @@
 // pages/api/notion-page.js
 export default async function handler(req, res) {
-  // ---------- CORS ----------
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
@@ -15,14 +13,16 @@ export default async function handler(req, res) {
     const r = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
       headers: {
         Authorization: `Bearer ${token}`,
-        'Notion-Version': '2022-06-28',
+        'Notion-Version': '2025-09-03',
       },
     });
+
     const data = await r.json();
-    if (!r.ok) throw new Error(data.message ?? 'page fetch failed');
+    if (!r.ok) throw new Error(data.message ?? 'Failed to fetch page');
+
     res.status(200).json(data);
   } catch (e) {
-    console.error(e);
+    console.error('Page fetch error:', e);
     res.status(500).json({ error: e.message });
   }
 }
